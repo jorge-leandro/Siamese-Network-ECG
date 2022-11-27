@@ -1,11 +1,6 @@
-import tensorflow as tf
-from tensorflow.keras import layers, models
-from tensorflow.keras import backend as kerasBackend
-from tensorflow.keras.utils import Sequence
-from tensorflow.python.keras.utils.data_utils import validate_file
-from tensorflow.python.ops.numpy_ops.np_math_ops import negative
+#%%
+import tensorflow.compat.v1 as tf 
 from joblib import Parallel, delayed
-from tensorflow.data import Dataset
 import utils
 import os
 import numpy as np
@@ -15,10 +10,12 @@ import json
 import sys
 import math
 
+tf.enable_eager_execution() 
+
+print(tf.add([1.0, 2.0], [3.0, 4.0])) 
+
 ## 2028 = 169*12
 
-physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 
 def getFileNamesDict():
@@ -69,25 +66,26 @@ def makeDataSets():
     testLabels = []
     validationLabels = []
     for key in dictData.keys():
-        valSize = int(math.floor(0.15*len(dictData[key])))
-        validationFiles = validationFiles + dictData[key][0:valSize]
+        files = dictData[key]
+        valSize = math.floor(len(files)*0.15)
+        validationFiles = validationFiles + files[:valSize]
         validationLabels = validationLabels + [key for i in range(valSize)]
-        testSize = int(math.floor(0.10*len(dictData[key])))
-        testFiles = testFiles + dictData[key][valSize:testSize]
-        testLabels = testLabels + [key for i in range(testSize-valSize)]
-        trainSize = len(dictData[key][valSize+testSize:])
-        trainFiles = trainFiles + dictData[key][valSize+testSize:]
+        testSize = math.floor(len(files)*0.15)
+        testFiles = testFiles + files[valSize:valSize+testSize]
+        testLabels = testLabels + [key for i in range(testSize)]
+        trainSize = len(files) - valSize - testSize
+        trainFiles = trainFiles + files[valSize+testSize:]
         trainLabels = trainLabels + [key for i in range(trainSize)]
 
     trainFiles,trainLabels = shuffleFiles(trainFiles,trainLabels)
-    testFiles,testLabels = shuffleFiles(testFiles,testLabels) 
+    testFiles,testLabels = shuffleFiles(testFiles,testLabels)
     validationFiles,validationLabels = shuffleFiles(validationFiles,validationLabels)
     print('Train Dataset')     
-    trainDataset = Dataset.from_tensor_slices((trainFiles,trainLabels))
+    trainDataset = tf.data.Dataset.from_tensor_slices((trainFiles,trainLabels))
     print('Test Dataset')
-    testDataset = Dataset.from_tensor_slices((testFiles,testLabels))
+    testDataset = tf.data.Dataset.from_tensor_slices((testFiles,testLabels))
     print('Validation Dataset')
-    validationDataset = Dataset.from_tensor_slices((validationFiles,validationLabels))
+    validationDataset = tf.data.Dataset.from_tensor_slices((validationFiles,validationLabels))
     return trainDataset, testDataset,validationDataset
 
 #TODO - Make It Faster
@@ -124,26 +122,26 @@ def shuffleFiles(files,labels):
 def contrastive_loss(y, preds, margin=1):
 	y = tf.cast(y, preds.dtype)
 	
-	squaredPreds = kerasBackend.square(preds)
-	squaredMargin = kerasBackend.square(kerasBackend.maximum(margin - preds, 0))
-	loss = kerasBackend.mean((1 - y) * squaredPreds + (y) * squaredMargin)
+	squaredPreds = tf.keras.backend.square(preds)
+	squaredMargin = tf.keras.backend.square(tf.keras.backend.maximum(margin - preds, 0))
+	loss = tf.keras.backend.mean((1 - y) * squaredPreds + (y) * squaredMargin)
 
 	return loss
 
 
 def generateModel():
-    model = models.Sequential()
-    model.add(layers.Conv1D(16,7,activation=layers.LeakyReLU(),input_shape=(2028,1)))
-    model.add(layers.Conv1D(32,5,activation=layers.LeakyReLU()))
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Conv1D(16,7,activation=tf.keras.layers.LeakyReLU(),input_shape=(2028,1)))
+    model.add(tf.keras.layers.Conv1D(32,5,activation=tf.keras.layers.LeakyReLU()))
     
-    model.add(layers.MaxPool1D(pool_size=2,strides=2))
+    model.add(tf.keras.layers.MaxPool1D(pool_size=2,strides=2))
     
-    model.add(layers.Conv1D(32,13,activation=layers.LeakyReLU()))
-    model.add(layers.Conv1D(16,9,activation=layers.LeakyReLU()))
+    model.add(tf.keras.layers.Conv1D(32,13,activation=tf.keras.layers.LeakyReLU()))
+    model.add(tf.keras.layers.Conv1D(16,9,activation=tf.keras.layers.LeakyReLU()))
     
-    model.add(layers.MaxPool1D(pool_size=2,strides=2))
+    model.add(tf.keras.layers.MaxPool1D(pool_size=2,strides=2))
     
-    model.add(layers.Flatten())
+    model.add(tf.keras.layers.Flatten())
    
 
     return model
@@ -155,9 +153,10 @@ model.summary()
 
 print('Getting Files')
 dictData = loadFilesDictParallel()
+#%%
 print('Generating Datasets')
 trainDataset,testDataset,validationDataset = makeDataSets()
-
+#%%
 distFunction = utils.RMSE
 distFunctionName = 'RMSE'
 
@@ -167,8 +166,8 @@ k = 0
 while k < 11:
     print(f'Model {k}')
 
-    sig = layers.Input(shape=(2028,1))
-    ref = layers.Input(shape=(2028,1))
+    sig = tf.keras.layers.Input(shape=(2028,1))
+    ref = tf.keras.layers.Input(shape=(2028,1))
 
     print('Generating Model')
     model = generateModel()
@@ -177,10 +176,10 @@ while k < 11:
     refModel = model(ref)
     
     # Define distance layer
-    distance = layers.Lambda(distFunction)([sigModel, refModel])
+    distance = tf.keras.layers.Lambda(distFunction)([sigModel, refModel])
     
-    outputs = layers.Dense(1, activation="sigmoid")(distance)
-    siameseModel = models.Model(inputs=[sig, ref], outputs=outputs)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(distance)
+    siameseModel = tf.keras.models.Model(inputs=[sig, ref], outputs=outputs)
 
     optmizer = tf.keras.optimizers.Adam()
 
@@ -243,3 +242,4 @@ while k < 11:
     with open(f'TestResultsContrastiveRMSE_{k}.json','w') as outfile:
         json.dump(testResults,outfile)
     k+=1
+# %%
