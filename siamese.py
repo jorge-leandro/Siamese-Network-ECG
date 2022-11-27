@@ -1,5 +1,5 @@
 #%%
-import tensorflow.compat.v1 as tf 
+import tensorflow as tf 
 from joblib import Parallel, delayed
 import utils
 import os
@@ -10,13 +10,16 @@ import json
 import sys
 import math
 
-tf.enable_eager_execution() 
+# physical_devices = tf.config.experimental.list_physical_devices('DML')
+# tf.config.experimental.set_memory_growth(physical_devices[0], True)
+# tf.enable_eager_execution() 
 
 print(tf.add([1.0, 2.0], [3.0, 4.0])) 
 
+
 ## 2028 = 169*12
 
-
+#%%
 
 def getFileNamesDict():
     print('Get File Names')
