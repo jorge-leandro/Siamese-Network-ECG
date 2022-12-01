@@ -1,5 +1,6 @@
 #%%
 import tensorflow as tf 
+from time import sleep
 from joblib import Parallel, delayed
 import utils
 import os
@@ -9,13 +10,13 @@ import random
 import json
 import sys
 import math
+from sklearn.model_selection import StratifiedKFold, train_test_split
 
-# physical_devices = tf.config.experimental.list_physical_devices('DML')
+physical_devices = tf.config.list_physical_devices('GPU')
+print(physical_devices)
 # tf.config.experimental.set_memory_growth(physical_devices[0], True)
-# tf.enable_eager_execution() 
 
 print(tf.add([1.0, 2.0], [3.0, 4.0])) 
-
 
 ## 2028 = 169*12
 
@@ -60,36 +61,15 @@ def loadFilesDictParallel():
     return dictData
 
 # TODO - REFACTOR
-def makeDataSets():
-    print('Creating Datasets')
-    trainFiles = []
-    testFiles = []
-    validationFiles = []
-    trainLabels = []
-    testLabels = []
-    validationLabels = []
-    for key in dictData.keys():
-        files = dictData[key]
-        valSize = math.floor(len(files)*0.15)
-        validationFiles = validationFiles + files[:valSize]
-        validationLabels = validationLabels + [key for i in range(valSize)]
-        testSize = math.floor(len(files)*0.15)
-        testFiles = testFiles + files[valSize:valSize+testSize]
-        testLabels = testLabels + [key for i in range(testSize)]
-        trainSize = len(files) - valSize - testSize
-        trainFiles = trainFiles + files[valSize+testSize:]
-        trainLabels = trainLabels + [key for i in range(trainSize)]
+def makeDataSets(trainFiles,testFiles, trainLabels,testLabels):
 
     trainFiles,trainLabels = shuffleFiles(trainFiles,trainLabels)
     testFiles,testLabels = shuffleFiles(testFiles,testLabels)
-    validationFiles,validationLabels = shuffleFiles(validationFiles,validationLabels)
     print('Train Dataset')     
     trainDataset = tf.data.Dataset.from_tensor_slices((trainFiles,trainLabels))
     print('Test Dataset')
     testDataset = tf.data.Dataset.from_tensor_slices((testFiles,testLabels))
-    print('Validation Dataset')
-    validationDataset = tf.data.Dataset.from_tensor_slices((validationFiles,validationLabels))
-    return trainDataset, testDataset,validationDataset
+    return trainDataset, testDataset
 
 #TODO - Make It Faster
 def processBatchDict(batch):
@@ -154,21 +134,37 @@ def generateModel():
 model = generateModel()
 model.summary()
 
-print('Getting Files')
+# print('Getting Files')
 dictData = loadFilesDictParallel()
 #%%
 print('Generating Datasets')
-trainDataset,testDataset,validationDataset = makeDataSets()
+dataFiles = np.load('dataFiles.npy')
+dataLabels = np.load('dataLabels.npy')
+validationSize = .2
+trainValidationFiles, testFiles, trainValidationLabels, testLabels = train_test_split(dataFiles,dataLabels,test_size=validationSize,random_state=42)
+
+testFiles,testLabels = shuffleFiles(testFiles,testLabels)
+testDataset = tf.data.Dataset.from_tensor_slices((testFiles,testLabels))
+
+
+
 #%%
 distFunction = utils.RMSE
 distFunctionName = 'RMSE'
 
 
 # Executes 10 Models (8h processing time ?)
-k = 0
-while k < 11:
-    print(f'Model {k}')
+kf = StratifiedKFold(n_splits=6, shuffle=True, random_state=42)
+k = 1
+for train_index, validation_index in kf.split(X=trainValidationFiles,y=trainValidationLabels):
+    if k == 1 or k==2 or k==3 or k==4 or k==5:
+        k += 1
+        continue
 
+    print(f'Fold {k}')
+
+    trainDataset,validationDataset = makeDataSets(trainValidationFiles[train_index],trainValidationFiles[validation_index],trainValidationLabels[train_index],trainValidationLabels[validation_index])
+    
     sig = tf.keras.layers.Input(shape=(2028,1))
     ref = tf.keras.layers.Input(shape=(2028,1))
 
@@ -244,5 +240,8 @@ while k < 11:
     testResults = {'FP':metric[7],'FN':metric[5],'TP':metric[6],'TN':metric[4]}
     with open(f'TestResultsContrastiveRMSE_{k}.json','w') as outfile:
         json.dump(testResults,outfile)
+    del trainDataset
+    del validationDataset
     k+=1
+    sleep(60)
 # %%
