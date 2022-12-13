@@ -12,8 +12,8 @@ import sys
 import math
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
-physical_devices = tf.config.list_physical_devices('GPU')
-print(physical_devices)
+# physical_devices = tf.config.list_physical_devices('GPU')
+# print(physical_devices)
 # tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 print(tf.add([1.0, 2.0], [3.0, 4.0])) 
@@ -136,10 +136,18 @@ model.summary()
 
 # print('Getting Files')
 dictData = loadFilesDictParallel()
+
+dataFiles = []
+dataLabels = []
+for key in dictData.keys():
+    dataFiles = dataFiles + dictData[key]
+    dataLabels = dataLabels + [key for i in range(len(dictData[key]))]
+
+
 #%%
 print('Generating Datasets')
-dataFiles = np.load('dataFiles.npy')
-dataLabels = np.load('dataLabels.npy')
+# dataFiles = np.load('dataFiles.npy')
+# dataLabels = np.load('dataLabels.npy')
 validationSize = .2
 trainValidationFiles, testFiles, trainValidationLabels, testLabels = train_test_split(dataFiles,dataLabels,test_size=validationSize,random_state=42)
 

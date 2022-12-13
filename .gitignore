@@ -132,3 +132,6 @@ Dataset/
 convert.txt
 *.npy
 .tool-versions
+
+
+*.zip
